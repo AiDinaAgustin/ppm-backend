@@ -1,114 +1,133 @@
-const sql = require("./db.js");
-// constructor
-const Task = function(task) {
-  this.task_name = task.task_name;
-  this.task_detail = task.task_detail;
-  this.date = task.date;
-  this.published=task.published;
-};
-Task.create = (newTask, result) => {
-  sql.query("INSERT INTO tasks SET ?", newTask, (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(err, null);
-      return;
-    }
-    console.log("created task: ", { id: res.insertId, ...newTask });
-    result(null, { id: res.insertId, ...newTask });
-  });
+var qs = require('querystring');
+const Task = require("../models/task.model.js");
+// Create and Save a new Task
 
-};
-Task.findById = (id, result) => {
-  console.log("The id is",id);
-  sql.query(`SELECT * FROM tasks WHERE id = ${id}`, (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(err, null);
-      return;
-    }
-    if (res.length) {
-      console.log("found task: ", res[0]);
-      result(null, res[0]);
-      return;
-    }
-    // not found Task with the id
-    result({ kind: "not_found" }, null);
-  });
-
-};
-Task.getAll = (name, result) => {
-  let query = "SELECT * FROM tasks";
-  if (name) {
-    query += ` WHERE task_name LIKE '%${name}%'`;
+exports.create = (req, res) => {
+  console.log(req.body);
+  // Validate request
+  if (!req.body) {
+    res.status(400).send({
+      message: "Content can not be empty!"
+    });
   }
-  sql.query(query, (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(null, err);
-      return;
-    }
-    console.log("tasks: ", res);
-    result(null, res);
+  // Create a Task
+  const task = new Task({
+    task_name: req.body.task_name,
+    task_detail: req.body.task_detail,
+    date: req.body.date,
+    published:req.body.published || 0
+  });
+  // Save Task in the database
+  Task.create(task, (err, data) => {
+    if (err)
+      res.status(500).send({
+        message:
+          err.message || "Some error occurred while creating the Task."
+      });
+    else res.send(data);
   });
 };
-Task.getAllPublished = result => {
-  sql.query("SELECT * FROM tasks WHERE published=1", (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(null, err);
-      return;
-    }
-    console.log("tasks: ", res);
-    result(null, res);
+// Retrieve all tasks from the database (with condition).
+exports.findAll = (req, res) => {
+  const title = req.query.name;
+  Task.getAll(title, (err, data) => {
+    if (err)
+      res.status(500).send({
+        message:
+          err.message || "Some error occurred while retrieving tasks."
+      });
+    else res.send(data);
   });
-    
 };
-Task.updateById = (id, task, result) => {
-  sql.query(
-    "UPDATE tasks SET task_name = ?, task_detail = ?, published = ? WHERE id = ?",
-    [task.task_name, task.task_detail, task.published, id],
-    (err, res) => {
+exports.findAllPublished = (req, res) => {
+  Task.getAllPublished((err, data) => {
+    if (err)
+      res.status(500).send({
+        message:
+          err.message || "Some error occurred while retrieving tasks."
+      });
+    else res.send(data);
+  });
+
+
+};
+// Find a single Task with a id
+exports.findOne = (req, res) => {
+  console.log(req.query.id);
+  Task.findById(req.query.id, (err, data) => {
+    if (err) {
+      if (err.kind === "not_found") {
+        res.status(404).send({
+          message: `Not found Task with id ${req.query.id}.`
+        });
+      } else {
+        res.status(500).send({
+          message: "Error retrieving Task with id " + req.params.id
+        });
+      }
+    } else res.send(data);
+  });
+};
+
+// Update a Task identified by the id in the request
+exports.update = (req, res) => {
+  // Validate Request
+  if (!req.body) {
+    res.status(400).send({
+      message: "Content can not be empty!"
+    });
+  }
+
+
+  console.log(req.body);
+  Task.updateById(
+    req.query.id,
+    new Task(req.body),
+    (err, data) => {
       if (err) {
-        console.log("error: ", err);
-        result(null, err);
-        return;
-      }
-      if (res.affectedRows == 0) {
-        // not found Task with the id
-        result({ kind: "not_found" }, null);
-        return;
-      }
-      console.log("updated task: ", { id: id, ...task });
-      result(null, { id: id, ...task });
+        if (err.kind === "not_found") {
+          res.status(404).send({
+            message: `Not found Tutorial with id ${req.query.id}.`
+          });
+        } else {
+          res.status(500).send({
+            message: "Error updating Tutorial with id " + req.query.id
+          });
+        }
+      } else res.send(data);
     }
   );
 
 };
-Task.remove = (id, result) => {
-  sql.query("DELETE FROM tasks WHERE id = ?", id, (err, res) => {
+// Delete a Task with the specified id in the request
+exports.delete = (req, res) => {
+  Task.remove(req.query.id, (err, data) => {
     if (err) {
-      console.log("error: ", err);
-      result(null, err);
-      return;
-    }
-    if (res.affectedRows == 0) {
-      // not found Task with the id
-      result({ kind: "not_found" }, null);
-      return;
-    }
-    console.log("deleted task with id: ", id);
-    result(null, res);
+      if (err.kind === "not_found") {
+        res.status(404).send({
+          message: `Not found Task with id ${req.query.id}.`
+        });
+      } else {
+        res.status(500).send({
+          message: "Could not delete Task with id " + req.query.id
+        });
+      }
+    } else res.send({ message: `Task was deleted successfully!` });
   });
+
 };
-Task.removeAll = result => {
-  sql.query("DELETE FROM tasks", (err, res) => {
-    if (err) {
-      console.log("error: ", err);
-      result(null, err);
-      return;
+// Delete all tasks from the database.
+exports.deleteAll = (req, res) => {
+  Task.removeAll((err, data)=>{
+    if(err){
+      res.status(500).send({
+        message:err.message || "Could not finish the operation"
+      });
+
+    }else{
+      res.send({
+        message:"Removed all task successfully"
+      });
     }
-    console.log(`deleted ${res.affectedRows} tasks`);
-    result(null, res);
-  });
+  })
 };
-module.exports = Task;
